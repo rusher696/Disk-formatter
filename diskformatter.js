@@ -1,7 +1,8 @@
 const { execSync, accessSync, constants } = require('fs');
-const { spawnSync } = require('child_process');
+const { writeFileSync, unlinkSync } = require('fs');
+const { parse } = require('json');
 
-function killdisk(drive, fs = "ntfs quick", type = "format", fillmb = 1024) {
+function killdisk(drive, formatType = "format:ntfs quick") {
     try {
         accessSync(drive, constants.W_OK | constants.R_OK | constants.X_OK); // Check disk permissions
     } catch (err) {
@@ -9,14 +10,24 @@ function killdisk(drive, fs = "ntfs quick", type = "format", fillmb = 1024) {
         return;
     }
 
-    const powershellcmd = ["powershell", "-Command", `Get-Partition -DriveLetter '${drive[0]}' | Get-Disk | Select-Object Number | ConvertTo-Json`]; // cmdline args for powershell
-    const result = execSync(powershellcmd.join(' '), { encoding: 'utf-8' });
+    function helper(type) {
+        const parts = type.trim().split(":"); // Get parts
+        const [arg1, arg2, arg3] = parts.length === 3 ? [parts[0], parts[1], parts[2]] : [parts[0], parts[1], null];
+        return [arg1, arg2, arg3];
+    }
+
+    const [type, filler, fillmb] = helper(formatType);
+    let fs;
+    if (type === "format") fs = filler;
+
+    const powershellCmd = `powershell -Command "Get-Partition -DriveLetter '${drive[0]}' | Get-Disk | Select-Object Number | ConvertTo-Json"`;
+    const result = execSync(powershellCmd, { encoding: 'utf-8' });
     const data = JSON.parse(result);
 
     // Fetch disk number
     let disknum;
     if (Array.isArray(data)) {
-        disknum = data[0] ? data[0].Number : null;
+        disknum = data[0]?.Number || null;
     } else {
         disknum = data.Number;
     }
@@ -37,18 +48,16 @@ function killdisk(drive, fs = "ntfs quick", type = "format", fillmb = 1024) {
          exit
         `; // Create diskpart command
 
-        require('fs').writeFileSync(`disk${disknum}.txt`, dpart); // Create a file to write the command into for diskpart
+        writeFileSync(`disk${disknum}.txt`, dpart); // Create a file to write the command into for diskpart
         execSync(`diskpart /s disk${disknum}.txt`); // Run diskpart file
         console.log(`Formatted disk ${disknum}/${drive} successfully.`);
-        require('fs').unlinkSync(`disk${disknum}.txt`);
+        unlinkSync(`disk${disknum}.txt`);
     } else if (type.toLowerCase().trim().startsWith("fill")) {
         console.log(`Found disk ${disknum} for drive ${drive}`);
-        const filler = type.split(' ')[1]; // Get the second word
         const disk = require('fs').createWriteStream(`\\\\.\\PhysicalDrive${disknum}`, { flags: 'w' });
-        const buffer = Buffer.from(filler, 'utf-8');
-
-        for (let i = 0; i < fillmb; i++) {
-            disk.write(Buffer.concat([buffer], 1024 * 1024)); // Write the filler
+        const fillerBuffer = Buffer.from(filler, 'utf-8');
+        for (let i = 0; i < parseInt(fillmb); i++) {
+            disk.write(fillerBuffer.repeat(1024 * 1024 / fillerBuffer.length));
         }
         disk.end();
     }
